@@ -1,50 +1,77 @@
-# Data
+# Crowdin UI Registry
 
-This project processes the
-[Censored Planet raw data](https://censoredplanet.org/data/raw) from a series of
-json files into a set of bigquery tables for faster analysis.
+A [shadcn registry](https://ui.shadcn.com/docs/registry) serving the Crowdin design tokens and a curated, pinned mirror of [shadcn/ui](https://ui.shadcn.com) components. Component source is pristine upstream shadcn; all Crowdin styling lives in the `theme`, `style`, and `app-theme` items.
 
-Censored Planet produces many types of measurements. Currently this projects
-integrates four of them.
+## Quickstart
 
-*   Echo (using [Echo protocol](https://tools.ietf.org/html/rfc862) servers)
-*   Discard (using [Discard protocol](https://tools.ietf.org/html/rfc863) servers)
+Add the registry to your `components.json`:
 
-*   HTTP (using existing HTTP webservers)
-*   HTTPS (using HTTPS webservers)
+```json
+{
+  "registries": {
+    "@crowdin": "https://crowdin.github.io/ui-registry/r/{name}.json"
+  }
+}
+```
 
-Censored Planet measurements are relatively technical. For information in how a
-particular measurement is carried out and what kinds of censorship it can find
-please explore [the papers](https://censoredplanet.org/publications) on the
-topic.
+Install the Crowdin style (theme tokens + base CSS), then components:
 
-In particular:
+```bash
+npx shadcn@latest add @crowdin/style
+npx shadcn@latest add @crowdin/button @crowdin/dialog
+```
 
-*   [Quack: Scalable Remote Measurement of Application-Layer Censorship](https://censoredplanet.org/assets/VanderSloot2018.pdf)
+The registry serves the latest [release](https://github.com/crowdin/ui-registry/releases) - changes on `main` are not published until a release is made.
 
-    for `ECHO` and `DISCARD` measurements.
+## Theming
 
-*   [Measuring the Deployment of Network Censorship Filters at Global Scale](https://censoredplanet.org/assets/filtermap.pdf)
+`@crowdin/theme` ships the canonical Crowdin design tokens as plain values - override them in your own CSS like any shadcn theme.
 
-    for `HTTP` and `HTTPS` measurements as part of the Hyperquack system.
+Apps that run inside the Crowdin iframe should also install `@crowdin/app-theme`. It re-points the tokens at the host `--crowdin-*` variables and keeps the canonical values as fallbacks so the app still looks right in local development outside the iframe:
 
-For information of the latest raw data formats check out the
-[format documentation](https://github.com/censoredplanet/censoredplanet),
-specifically:
+```bash
+npx shadcn@latest add @crowdin/style                       # standalone app
+npx shadcn@latest add @crowdin/style @crowdin/app-theme    # app embedded in Crowdin
+```
 
-*   [HyperQuack v1](https://github.com/censoredplanet/censoredplanet/blob/master/docs/hyperquackv1.rst)
-*   [HyperQuack v2](https://github.com/censoredplanet/censoredplanet/blob/master/docs/hyperquackv2.rst)
-*   [Satellite v1](https://github.com/censoredplanet/censoredplanet/blob/master/docs/satellitev1.rst)
-*   [Satellite v2](https://github.com/censoredplanet/censoredplanet/blob/master/docs/satellitev2.rst)
+CSS variables never cross the iframe boundary, so `@crowdin/app-theme` also installs the host bridge that pulls the palette from the host: `lib/crowdin-host.ts` (framework-agnostic) and `hooks/use-crowdin-theme.ts` (React). Wire it once near your app root - it applies the host `--crowdin-*` variables to `<html>`, tracks host theme changes, and no-ops outside the iframe:
 
-## Further Documentation
+```tsx
+const mode = useCrowdinTheme() // "light" | "dark" - toggle your .dark class off this
+```
 
-For documentation on the generated tables see [tables](tables.md).
+The app must load the Crowdin iframe SDK (`https://cdn.crowdin.com/apps/dist/iframe.js`) for the bridge to find the `AP` global; an async script tag is fine - the bridge probes for `AP` for \~10 seconds after mount before concluding it runs outside the iframe.
 
-For examples of how to query and use the data in analysis see
-[examples](./examples).
+## Updating components
 
-For example of how to develop the pipeline see [development](development.md).
+```bash
+npx shadcn@latest add @crowdin/button --diff
+npx shadcn@latest add @crowdin/button --overwrite
+```
 
-For example of how to run a production pipeline see
-[production](production.md).
+## MCP
+
+The registry works with the shadcn MCP server:
+
+```bash
+npx shadcn@latest mcp init --client claude
+```
+
+## Development
+
+```bash
+pnpm install
+pnpm test        # unit tests for the sync helpers and theme/bridge invariants
+pnpm sync        # refresh registry/src/ from upstream shadcn (open the diff as a PR)
+pnpm validate    # schema-validate registry.json
+pnpm build       # emit r/*.json
+pnpm smoke       # install everything into a fixture app, typecheck, compile CSS
+pnpm site:dev    # run the component showcase locally (one-time: pnpm --dir site install)
+pnpm site:build  # typecheck and build the showcase
+```
+
+`registry/src/**` is generated by `pnpm sync` - never edit it by hand. Crowdin styling changes go into the `theme`/`style`/`app-theme` items in `registry.json`. `registry/crowdin/**` is hand-written (the host-bridge sources shipped by `app-theme`) and survives sync.
+
+To refresh the components from upstream shadcn, run the **Sync upstream** workflow from the Actions tab - it syncs, runs the full check suite, and opens a PR with the diff (only when something actually changed). New upstream components are opt-in: add the name to `scripts/upstream-items.json` first.
+
+The showcase at [crowdin.github.io/ui-registry](https://crowdin.github.io/ui-registry/) is built from `site/` and renders `registry/src/**` directly with the generated Crowdin theme - use its header toggles to preview dark mode and simulated Crowdin host variables.
